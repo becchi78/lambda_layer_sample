@@ -1,4 +1,4 @@
-# AWS Lambda Layer Sample
+# AWS Lambda Python Common Layer
 
 汎用的な Python ライブラリを含む AWS Lambda Layer 用のリポジトリです。
 
@@ -7,10 +7,11 @@
 - pandas==2.0.0
 - numpy==1.24.3
 - requests==2.31.0
+- pyyaml==6.0.1
 
 ## ディレクトリ構成
 
-```bash
+```text
 lambda-layers/
 ├── README.md
 ├── python-common/          # レイヤー名のディレクトリ
@@ -34,99 +35,77 @@ chmod +x build.sh
 このリポジトリは AWS CodeBuild と統合されています。
 `buildspec.yml`に定義されたステップに従って、自動的に Layer がビルドされデプロイされます。
 
-## Layer の使用方法
+## 必要な権限設定
 
-### AWS Console 経由
+### CodeBuild のサービスロール権限
 
-1. Lambda 関数の設定画面を開く
-2. [Layers]セクションを選択
-3. [Add a layer]をクリック
-4. `python-common`レイヤーを選択
-5. 使用したいバージョンを選択
+CodeBuild が Layer を作成するために必要な権限を設定する必要があります。以下のインラインポリシーを CodeBuild のサービスロールに追加してください：
 
-### AWS SAM での使用例
-
-```yaml
-AWSTemplateFormatVersion: "2010-09-09"
-Transform: AWS::Serverless-2016-10-31
-
-Resources:
-  MyFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: lambda_function.lambda_handler
-      Runtime: python3.9
-      CodeUri: ./
-      Layers:
-        - arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:python-common:1 # バージョンは適宜変更
-```
-
-### サンプルコード
-
-```python
-import json
-import pandas as pd
-import numpy as np
-import requests
-
-def lambda_handler(event, context):
-    # Pandasを使用したデータ操作
-    df = pd.DataFrame({
-        'id': range(1, 4),
-        'value': np.random.rand(3)
-    })
-
-    # Requestsを使用したAPI呼び出し
-    response = requests.get('https://api.example.com/data')
-    api_data = response.json()
-
-    # データフレームをJSON形式に変換
-    result = {
-        'processed_data': df.to_dict('records'),
-        'api_response': api_data
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "lambda:PublishLayerVersion",
+        "lambda:DeleteLayerVersion",
+        "lambda:GetLayerVersion",
+        "lambda:ListLayerVersions"
+      ],
+      "Resource": [
+        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:python-common",
+        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:python-common:*"
+      ]
     }
-
-    return {
-        'statusCode': 200,
-        'body': json.dumps(result)
-    }
+  ]
+}
 ```
 
-## 開発者向け情報
+### ポリシーの追加方法
 
-### 新しいライブラリの追加方法
-
-1. `python-common/requirements.txt`に新しいライブラリを追加
-2. バージョンは明示的に指定することを推奨
-
-```text
-# requirements.txtの例
-pandas==2.0.0
-new-library==1.0.0  # 新しいライブラリを追加
+```bash
+aws iam put-role-policy \
+  --role-name codebuild-sam_lambda_layer_sample_codebuild-service-role \
+  --policy-name lambda-layer-publish-policy \
+  --policy-document file://lambda-layer-policy.json
 ```
 
-### レイヤーサイズの制限
+### 権限の確認方法
 
-- AWS Lambda Layer のサイズ制限は解凍時で 250MB
-- 新しいライブラリを追加する際は、この制限を考慮
+```bash
+# ロールの確認
+aws iam get-role --role-name codebuild-sam_lambda_layer_sample_codebuild-service-role
 
-## トラブルシューティング
+# アタッチされたポリシーの確認
+aws iam list-attached-role-policies --role-name codebuild-sam_lambda_layer_sample_codebuild-service-role
 
-### よくある問題と解決方法
+# インラインポリシーの確認
+aws iam list-role-policies --role-name codebuild-sam_lambda_layer_sample_codebuild-service-role
+```
 
-1. ライブラリのインポートエラー
+## バージョン管理
 
-   - Layer が正しく追加されているか確認
-   - Lambda 関数のランタイムと Layer の互換性を確認
+### 新しいバージョンの作成
 
-2. Layer 作成の失敗
-   - ビルドログを確認
-   - Python version の互換性を確認
-   - 依存関係の矛盾がないか確認
+1. `requirements.txt`を更新
+2. パイプラインを実行（または手動でビルド）
+3. 新しいバージョンが自動的に作成されます
 
-## 注意事項
+### バージョンの確認
 
-- この Layer は Python 3.9 用に最適化されています
+```bash
+aws lambda list-layer-versions --layer-name python-common
+```
+
+### サイズ制限
+
+- Lambda Layer の最大サイズは解凍時に 250MB
+- 依存関係を追加する際は、合計サイズに注意
+
+## その他の注意事項
+
+- Python 3.9 用に最適化されています
 - 本番環境での使用前に、テスト環境での動作確認を推奨
 - Layer のバージョンを変更する際は、依存するすべての関数での動作確認が必要
 
@@ -135,7 +114,3 @@ new-library==1.0.0  # 新しいライブラリを追加
 1. 新しいライブラリの追加や更新の提案は Issue で議論
 2. 変更は Pull Request として提出
 3. CI/CD パイプラインでのテスト成功を確認
-
-## ライセンス
-
-[使用するライセンスを記載]
