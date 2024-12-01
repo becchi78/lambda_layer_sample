@@ -4,6 +4,8 @@ phases:
   install:
     runtime-versions:
       python: 3.12
+    commands:
+      - pip install --upgrade pip
   pre_build:
     commands:
       - cd python-common
